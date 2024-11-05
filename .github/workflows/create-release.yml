@@ -1,0 +1,81 @@
+name: Create release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+  workflow_dispatch:
+
+env:
+  REGISTRY_IMAGE: mwader/static-ffmpeg
+
+jobs:
+  build_arm64:
+
+    runs-on: ubicloud-standard-8-arm
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: "Get binary arm64"
+        run: |
+          docker run --rm -v ${{ github.workspace }}/output-arm:/output $(echo -e 'FROM alpine\nCOPY --from=${{ env.REGISTRY_IMAGE }}:${{ env.TAG_NAME }}-arm64 /ff* /\nENTRYPOINT cp /ff* /output' | docker build -q -)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "ffmepg-arm64"
+          path: ${{ github.workspace }}/output-arm
+
+  build_amd64:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: "Get binary amd64"
+        run: |
+          docker run --rm -v ${{ github.workspace }}/output:/output $(echo -e 'FROM alpine\nCOPY --from=${{ env.REGISTRY_IMAGE }}:${{ env.TAG_NAME }}-amd64 /ff* /\nENTRYPOINT cp /ff* /output' | docker build -q -)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: "ffmepg-amd64"
+          path: ${{ github.workspace }}/output
+
+
+  create_release:
+    needs:
+      - build_arm64
+      - build_amd64
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmepg-arm64
+          path: ./output
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmepg-amd64
+          path: ./output
+
+      - name: Get tag message
+        run: |
+          echo -e "> Automated release created by GitHub Actions.\n" > ${{ github.workspace }}/RELEASE.md
+          GITHUB_REF=${{ github.ref }}
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          git tag -l --format='%(contents)' "${TAG_NAME}" | tee -a ${{ github.workspace }}/RELEASE.md
+
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ github.workspace }}/output,${{ github.workspace }}/output-arm"
+          bodyFile: ${{ github.workspace }}/RELEASE.md
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
