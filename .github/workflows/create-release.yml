@@ -8,6 +8,7 @@ on:
 
 env:
   REGISTRY_IMAGE: mwader/static-ffmpeg
+  TAG_NAME:       7.1
 
 jobs:
   build_arm64:
